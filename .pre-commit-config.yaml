@@ -1,0 +1,56 @@
+default_install_hook_types: [pre-commit, pre-push]
+
+# QR payload fixtures must stay byte-exact (no final newline, empty trailing lines).
+exclude: ^tests/fixtures/
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+        exclude: ^docs/.*\.pdf$  # SIX spec PDFs (~4 MB each) are committed on purpose
+
+  # Tools run through uv so they use the versions pinned in uv.lock (same as CI).
+  - repo: local
+    hooks:
+      - id: uv-lock
+        name: uv lock --check
+        entry: uv lock --check
+        language: system
+        files: ^(pyproject\.toml|uv\.lock)$
+        pass_filenames: false
+
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix --force-exclude
+        language: system
+        types_or: [python, pyi]
+
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+
+      - id: mypy
+        name: mypy
+        entry: uv run mypy src
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+
+      - id: pytest
+        name: pytest (unit; integration runs in CI, needs Docker)
+        entry: uv run pytest -q tests/unit
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

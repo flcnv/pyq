@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint, type-check, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      db:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:8
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:  # read by src/config.py; integration tests create and migrate "<db>_test"
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.15"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Ruff lint
+        run: uv run ruff check --output-format=github .
+
+      - name: Ruff format
+        run: uv run ruff format --check .
+
+      - name: Mypy
+        run: uv run mypy src
+
+      - name: Migrations match the models (empty database)
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
+
+      - name: Pytest
+        run: uv run pytest
+
+  docker:
+    name: Docker image and full-stack smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build image
+        run: docker build --build-arg GIT_SHA="${GITHUB_SHA::7}" --tag swiss-invoice-api .
+
+      - name: Check the image
+        run: |
+          docker run --rm swiss-invoice-api python -c \
+            "import cv2, pypdfium2, src.main, src.worker.main; print('imports ok')"
+          docker run --rm swiss-invoice-api python -c \
+            "from src.config import get_settings; assert get_settings().git_sha == '${GITHUB_SHA::7}'"
+
+      - name: Start the stack (migrations, API, worker)
+        run: |
+          cp .env.example .env
+          GIT_SHA="${GITHUB_SHA::7}" docker compose up -d --wait
+
+      - name: Upload a QR-bill and wait until the worker made it an invoice
+        run: python3 scripts/smoke_test.py http://localhost:8000
+
+      - name: Logs
+        if: failure()
+        run: docker compose logs api worker migrate
