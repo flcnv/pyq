@@ -47,12 +47,19 @@ def warn_if_every_proxy_is_trusted(environ: Mapping[str, str]) -> None:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Swiss Invoice API", version="0.1.0", lifespan=lifespan)
+
+    # Register exceptions
     register_exception_handlers(app)
+
+    # Middleware
     app.add_middleware(UploadLimitMiddleware)
     app.add_middleware(RequestIdMiddleware)
+
+    # Routers
     app.include_router(health.router)
     app.include_router(invoices.router)
     app.include_router(ingestions.router)
+
     return app
 
 
