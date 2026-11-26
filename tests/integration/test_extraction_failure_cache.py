@@ -42,6 +42,29 @@ async def test_unknown_file_is_a_miss(make_cache: CacheFactory) -> None:
     assert await make_cache().get(SHA256) is None
 
 
+@pytest.mark.parametrize(
+    "stored",
+    [
+        b"not json",
+        b"\xff\xfe",
+        b"[]",
+        b'{"kind": "invalid_invoice"}',
+        b'{"kind": "invalid_invoice", "issues": [{"code": "renamed_code", "field": "f", '
+        b'"message": "m", "severity": "error"}]}',
+    ],
+    ids=["not-json", "not-utf8", "not-an-object", "missing-issues", "unknown-issue-code"],
+)
+async def test_unreadable_entry_is_a_miss_and_logged(
+    make_cache: CacheFactory, redis: Redis, caplog: pytest.LogCaptureFixture, stored: bytes
+) -> None:
+    cache = make_cache()
+    await redis.set(cache.key(SHA256), stored, ex=FAILURE_CACHE_TTL_SECONDS)
+    caplog.set_level(logging.WARNING)
+
+    assert await cache.get(SHA256) is None
+    assert [record.message for record in caplog.records] == ["LLM failure cache entry unreadable"]
+
+
 async def test_another_extraction_config_does_not_see_the_failure(
     make_cache: CacheFactory,
 ) -> None:

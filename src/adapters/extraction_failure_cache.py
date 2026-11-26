@@ -37,7 +37,17 @@ class RedisExtractionFailureCache:
         except RedisError as error:
             logger.warning("LLM failure cache unavailable", extra={"error": type(error).__name__})
             return None
-        return None if cached is None else _from_json(json.loads(cached))
+        if cached is None:
+            return None
+        try:
+            return _from_json(json.loads(cached))
+        except (ValueError, KeyError, TypeError) as error:
+            # A corrupt entry, or one this build can't read (e.g. an unknown issue code): a miss,
+            # like an outage. The cache must never fail a job.
+            logger.warning(
+                "LLM failure cache entry unreadable", extra={"error": type(error).__name__}
+            )
+            return None
 
     async def remember(self, content_sha256: str, failure: DeterministicFailure) -> None:
         value = json.dumps(_to_json(failure))
