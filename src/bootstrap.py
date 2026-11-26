@@ -27,9 +27,6 @@ from src.application.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from src.application.retry_policy import RetryPolicy
 from src.config import Settings
 
-# The composition root: the only module that builds concrete adapters. The API (`api/deps.py`,
-# `main.py`) and the worker (`worker/`) read their ports from `AppContext`; services never see it.
-
 logger = logging.getLogger(__name__)
 
 

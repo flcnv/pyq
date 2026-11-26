@@ -16,23 +16,41 @@ request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
 # The ingestion job the worker is processing.
 job_id_var: ContextVar[str | None] = ContextVar("job_id", default=None)
 
+# Record attribute → the context variable that fills it. Each is logged only when set.
+_CONTEXT_FIELDS: dict[str, ContextVar[str | None]] = {
+    "request_id": request_id_var,
+    "job_id": job_id_var,
+}
+
 # Attributes every LogRecord has. Anything else on a record came from `extra={...}`.
-_STANDARD_ATTRIBUTES = frozenset(
-    vars(logging.LogRecord("", logging.INFO, "", 0, "", None, None))
-) | {"message", "asctime", "request_id", "job_id"}
+_STANDARD_ATTRIBUTES = (
+    frozenset(vars(logging.LogRecord("", logging.INFO, "", 0, "", None, None)))
+    | {"message", "asctime"}
+    | _CONTEXT_FIELDS.keys()
+)
 
 
-class RequestIdFilter(logging.Filter):
-    """Stamps each record with the current request ID and job ID (None when there is none)."""
+def _context_values(record: logging.LogRecord) -> dict[str, str]:
+    """The record's context fields that are set, in `_CONTEXT_FIELDS` order."""
+    values = {name: getattr(record, name, None) for name in _CONTEXT_FIELDS}
+    return {name: value for name, value in values.items() if value is not None}
+
+
+def _extra_fields(record: logging.LogRecord) -> dict[str, object]:
+    return {key: value for key, value in vars(record).items() if key not in _STANDARD_ATTRIBUTES}
+
+
+class ContextFilter(logging.Filter):
+    """Stamps each record with the current context fields (None when unset)."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        record.request_id = request_id_var.get()
-        record.job_id = job_id_var.get()
+        for name, var in _CONTEXT_FIELDS.items():
+            setattr(record, name, var.get())
         return True
 
 
 class TextFormatter(logging.Formatter):
-    """`TEXT_FORMAT` plus the request ID and job ID when set, so text lines can be traced too."""
+    """`TEXT_FORMAT` plus the context fields that are set, so text lines can be traced too."""
 
     def __init__(self) -> None:
         super().__init__(TEXT_FORMAT)
@@ -40,10 +58,8 @@ class TextFormatter(logging.Formatter):
     # formatMessage, not format: the IDs go on the record's first line, before any traceback.
     def formatMessage(self, record: logging.LogRecord) -> str:  # noqa: N802 (stdlib override)
         line = super().formatMessage(record)
-        for context in ("request_id", "job_id"):
-            value = getattr(record, context, None)
-            if value is not None:
-                line += f" {context}={value}"
+        for name, value in _context_values(record).items():
+            line += f" {name}={value}"
         return line
 
 
@@ -64,19 +80,29 @@ class JsonFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
             "version": self._version,
+            **_context_values(record),
         }
-        for context in ("request_id", "job_id"):
-            value = getattr(record, context, None)
-            if value is not None:
-                entry[context] = value
-        for key, value in vars(record).items():
-            if key not in _STANDARD_ATTRIBUTES and key not in entry:
-                entry[key] = value
+        # An extra never overrides a field set above.
+        for key, value in _extra_fields(record).items():
+            entry.setdefault(key, value)
         if record.exc_info:
             entry["exception"] = self.formatException(record.exc_info)
         if record.stack_info:
             entry["stack"] = self.formatStack(record.stack_info)
         return json.dumps(entry, default=str, ensure_ascii=False)
+
+
+def _app_handler(app_logger: logging.Logger) -> logging.Handler:
+    """The app's handler on `app_logger`, created on the first call."""
+    handler = next((h for h in app_logger.handlers if h.name == HANDLER_NAME), None)
+    if handler is None:
+        handler = logging.StreamHandler()
+        handler.name = HANDLER_NAME
+        app_logger.addHandler(handler)
+    # On the handler, not the logger: logger filters skip records from child loggers (src.api...).
+    if not any(isinstance(f, ContextFilter) for f in handler.filters):
+        handler.addFilter(ContextFilter())
+    return handler
 
 
 def configure_logging(*, level: str, log_format: LogFormat, version: str) -> None:
@@ -88,13 +114,5 @@ def configure_logging(*, level: str, log_format: LogFormat, version: str) -> Non
     """
     app_logger = logging.getLogger(APP_LOGGER)
     app_logger.setLevel(level.upper())
-    handler = next((h for h in app_logger.handlers if h.name == HANDLER_NAME), None)
-    if handler is None:
-        handler = logging.StreamHandler()
-        handler.name = HANDLER_NAME
-        app_logger.addHandler(handler)
-    # On the handler, not the logger: logger filters skip records from child loggers (src.api...).
-    if not any(isinstance(f, RequestIdFilter) for f in handler.filters):
-        handler.addFilter(RequestIdFilter())
     formatter = JsonFormatter(version=version) if log_format == "json" else TextFormatter()
-    handler.setFormatter(formatter)
+    _app_handler(app_logger).setFormatter(formatter)
