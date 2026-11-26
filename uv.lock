@@ -36,7 +36,7 @@ wheels = [
 
 [[package]]
 name = "anthropic"
-version = "2.12.0"
+version = "2.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -48,9 +48,9 @@ dependencies = [
     { name = "sniffio" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/26/05/fdf767b3da8fc8e2d78eef15c98a5ead03be2753b4e9cfcda58f0995f0b0/anthropic-2.12.0.tar.gz", hash = "sha256:571e6d250bcd6bbaf5fd5f3c764b8e11af9901ad2e44b025f8e773c6cc7a7173", size = 2025823, upload-time = "2026-11-20T15:57:03.541Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/09/fc/fb3accd8b9f9f9123ee5e90f27d855a9ed40a315197be6d4c8f07f9f0428/anthropic-2.13.0.tar.gz", hash = "sha256:966718543d354aae57cba5b8b5693491b9538a55ac8d83d3ddc54448ae8f58e7", size = 2048816, upload-time = "2026-11-23T18:35:03.506Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4a/a6/1cde7a75d1be07582f6b3c2dd12ddba9d1fb278f5b9685f30dbf6b39dc2c/anthropic-2.12.0-py3-none-any.whl", hash = "sha256:8631e3880ee18b0f87ce61d5d08e67804200463cf27c4182024715e232c99ba6", size = 2556840, upload-time = "2026-11-20T15:57:01.546Z" },
+    { url = "https://files.pythonhosted.org/packages/49/7b/a0c69f7a530a3648f8c0100af74d11f9fca7b307c352f1db8b679f37107d/anthropic-2.13.0-py3-none-any.whl", hash = "sha256:b9f61dc45a9630108f96135ecb726ffe1a6fd1f70dd2c9db5621eaaca62c16ec", size = 2613482, upload-time = "2026-11-23T18:35:01.841Z" },
 ]
 
 [[package]]
@@ -854,11 +854,11 @@ wheels = [
 
 [[package]]
 name = "redis"
-version = "8.1.0"
+version = "8.2.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a8/99/604f0b666d4c616d891cf77ebb9db6bb21601344c051aebf1b72b9ff915f/redis-8.1.0.tar.gz", hash = "sha256:6e1a19beef9225c83efd689c7e6b7da2d5215b1f42cd13b7fc3714d0a09c7b25", size = 5254356, upload-time = "2026-07-30T08:51:00.269Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/10/8a/408dd829367bb62972bd5d91bd8cc283c24c8344f80a880d4b3901ce43fd/redis-8.2.0.tar.gz", hash = "sha256:58b1493d83ba8f0e3ffe6bd781194ca5c01c91267ae03d29c1087b0b3c7d79c9", size = 5809579, upload-time = "2026-11-23T08:31:56.692Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/66/9d/c5731f6e3608663d4d3656fd8d3aecee8b509c3082818f5a13eae925baea/redis-8.1.0-py3-none-any.whl", hash = "sha256:a4fe1aac3d3b3cc791d4b3d5931c5a956045dc951ee74d1c913ee3ac4d2ee9fb", size = 560618, upload-time = "2026-07-30T08:50:58.497Z" },
+    { url = "https://files.pythonhosted.org/packages/ea/8f/98458650cca985032598a59caca0641e7889cf4d536dc12dc032bef7df47/redis-8.2.0-py3-none-any.whl", hash = "sha256:4ff649f10fae5e7e97798fb2a84e84a0a66e98310d75cad2b5a572ce0f9f15a7", size = 732892, upload-time = "2026-11-23T08:31:55.011Z" },
 ]
 
 [[package]]
@@ -988,7 +988,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.20.1" },
-    { name = "anthropic", specifier = ">=2.12.0" },
+    { name = "anthropic", specifier = ">=2.13.0" },
     { name = "asyncpg", specifier = ">=0.32.0" },
     { name = "fastapi", specifier = ">=0.165.0" },
     { name = "fpdf2", specifier = ">=2.9.0" },
@@ -998,7 +998,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.16.3" },
     { name = "pypdfium2", specifier = ">=5.15.2" },
     { name = "python-multipart", specifier = ">=0.0.34" },
-    { name = "redis", specifier = ">=8.1.0" },
+    { name = "redis", specifier = ">=8.2.0" },
     { name = "segno", specifier = ">=1.6.6" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.1.9" },
     { name = "uvicorn", specifier = ">=0.54.0" },
