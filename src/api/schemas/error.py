@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel
 
 from src.application.models.ingest_job import JobError
@@ -36,3 +38,9 @@ class ErrorResponse(BaseModel):
     """The one error shape every endpoint returns: `{"error": {"code", "message", "details"}}`."""
 
     error: ErrorBody
+
+
+# For every endpoint that reads or writes the database (Any: FastAPI's `responses` value type).
+STORAGE_UNAVAILABLE: dict[int | str, dict[str, Any]] = {
+    503: {"model": ErrorResponse, "description": "Database unreachable; retry after `Retry-After`"}
+}

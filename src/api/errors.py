@@ -27,7 +27,7 @@ STORAGE_RETRY_AFTER_SECONDS = 5
 
 
 class ApiError(Exception):
-    """An error raised by the API layer itself (upload checks, unwired adapters)."""
+    """An error raised by the API layer itself, such as the upload's media type check."""
 
     def __init__(self, status: HTTPStatus, code: str, message: str) -> None:
         super().__init__(message)

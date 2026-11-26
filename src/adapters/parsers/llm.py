@@ -20,6 +20,7 @@ from src.domain.models.amount import Amount, Currency
 from src.domain.models.invoice import Invoice, InvoiceSource
 from src.domain.models.party import Address, Creditor, Debtor
 from src.domain.models.reference import Reference, ReferenceType
+from src.domain.validation import normalized_iban
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +221,7 @@ def to_invoice(extracted: ExtractedInvoice, *, invoice_id: UUID, created_at: dat
         created_at=created_at,
         source=InvoiceSource.LLM,
         creditor=Creditor(
-            iban=_without_spaces(extracted.creditor_iban).upper(),
+            iban=normalized_iban(extracted.creditor_iban),
             name=extracted.creditor.name.strip(),
             address=_to_address(extracted.creditor.address),
         ),

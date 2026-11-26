@@ -176,7 +176,7 @@ examples are transcribed by hand.
 | `POST` | `/invoices` | Multipart `file`: `application/pdf` only, at most `MAX_UPLOAD_MB` (default 5 MB), must start with `%PDF-`. `202` + ingestion, `Location`, `Retry-After: 2`; `200` if the same file is already `done` |
 | `GET` | `/ingestions/{id}` | `status`, `attempts`, `invoice_id` once `done`, `error` once `failed` |
 | `GET` | `/invoices/{id}` | The invoice |
-| `GET` | `/invoices?creditor_iban=&currency=&limit=&offset=` | `{items, total, limit, offset}`, newest first, `limit` 1–100 |
+| `GET` | `/invoices?creditor_iban=&currency=&limit=&offset=` | `{items, total, limit, offset}`, newest first, `limit` 1–100; `creditor_iban` also in printed form (spaces, any case) |
 | `GET` | `/health` | `{"status": "ok", "version": "<git sha>"}` |
 
 Every error has the shape `{"error": {"code", "message", "details": [...]}}`, and so does a failed
@@ -192,6 +192,11 @@ ingestion's `error` (one `details` entry per violated rule). Every response carr
 | `429 rate_limited` (with `Retry-After`) | `llm_quota_exceeded`: no QR code and the LLM budget is used up |
 | `500 internal_error` | `retries_exhausted`: a transient problem outlasted every attempt |
 | `503 storage_unavailable` (with `Retry-After`): the database is unreachable | `internal_error`: a bug; details only in the worker log |
+
+`retries_exhausted` names the last transient problem in its one `details` entry:
+`extraction_failed` (Claude timed out, unreachable, 5xx or 429), `rate_limiter_unavailable` (Redis
+down, so the LLM budget can't be checked), `storage_unavailable` (database unreachable), or
+`lease_expired` (the worker stopped, e.g. crashed or was killed, during the last attempt).
 
 ## Operations
 

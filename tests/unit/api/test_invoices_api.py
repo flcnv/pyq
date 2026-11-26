@@ -325,6 +325,21 @@ async def test_unreachable_database_is_503_with_retry_after(
     assert record.exc_info is None  # an outage, not a bug: no traceback
 
 
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("post", "/invoices"),
+        ("get", "/invoices"),
+        ("get", "/invoices/{invoice_id}"),
+        ("get", "/ingestions/{job_id}"),
+    ],
+)
+def test_database_endpoints_document_the_503(method: str, path: str) -> None:
+    responses = create_app().openapi()["paths"][path][method]["responses"]
+
+    assert "503" in responses
+
+
 # --- POST /invoices: the same file again ---------------------------------------------------------
 
 LOCKED = {"locked_by": "worker-1", "locked_until": NOW}
@@ -528,7 +543,7 @@ async def test_list_filters_by_currency_and_creditor_iban() -> None:
         ({"limit": 101}, "query.limit"),
         ({"offset": -1}, "query.offset"),
         ({"currency": "USD"}, "query.currency"),
-        ({"creditor_iban": "C" * 22}, "query.creditor_iban"),
+        ({"creditor_iban": "C" * 35}, "query.creditor_iban"),
     ],
 )
 async def test_list_rejects_invalid_query_parameters(params: dict[str, Any], field: str) -> None:

@@ -14,7 +14,7 @@ from src.api.deps import (
     limit_uploads,
 )
 from src.api.errors import ApiError, UploadTooLargeError
-from src.api.schemas.error import ErrorResponse
+from src.api.schemas.error import STORAGE_UNAVAILABLE, ErrorResponse
 from src.api.schemas.ingestion import IngestionResponse
 from src.api.schemas.invoice import InvoicePageResponse, InvoiceResponse
 from src.application.errors import UnreadableDocumentError
@@ -27,6 +27,8 @@ from src.domain.models.amount import Currency
 POLL_AFTER_SECONDS = 2
 # The first bytes every PDF starts with (its "magic number").
 PDF_SIGNATURE = b"%PDF-"
+# 21 characters, plus room for the spaces of the printed form ("CH44 3199 9123 0008 8901 2").
+IBAN_FILTER_MAX_LENGTH = 34
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
 
@@ -41,6 +43,7 @@ router = APIRouter(prefix="/invoices", tags=["invoices"])
         413: {"model": ErrorResponse, "description": "File larger than MAX_UPLOAD_MB"},
         415: {"model": ErrorResponse, "description": "Not a PDF"},
         429: {"model": ErrorResponse, "description": "Upload rate exceeded"},
+        **STORAGE_UNAVAILABLE,
     },
 )
 async def ingest_invoice(
@@ -71,16 +74,19 @@ async def ingest_invoice(
 
 @router.get(
     "/{invoice_id}",
-    responses={404: {"model": ErrorResponse, "description": "Invoice not found"}},
+    responses={
+        404: {"model": ErrorResponse, "description": "Invoice not found"},
+        **STORAGE_UNAVAILABLE,
+    },
 )
 async def get_invoice(invoice_id: UUID, service: GetInvoiceDep) -> InvoiceResponse:
     return InvoiceResponse.from_domain(await service.execute(invoice_id))
 
 
-@router.get("")
+@router.get("", responses=STORAGE_UNAVAILABLE)
 async def list_invoices(
     service: ListInvoicesDep,
-    creditor_iban: Annotated[str | None, Query(max_length=21)] = None,
+    creditor_iban: Annotated[str | None, Query(max_length=IBAN_FILTER_MAX_LENGTH)] = None,
     currency: Currency | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,

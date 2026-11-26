@@ -46,3 +46,15 @@ async def test_filters_by_creditor_iban_and_currency() -> None:
 
     assert page.items == (chf_qr,)
     assert page.total == 1
+
+
+async def test_creditor_iban_filter_accepts_the_printed_form() -> None:
+    invoice = make_invoice()
+    service = ListInvoices(
+        unit_of_work=InMemoryUnitOfWork(invoices=InMemoryInvoiceRepository((invoice,))).factory
+    )
+    printed = " ".join(QR_IBAN[i : i + 4] for i in range(0, len(QR_IBAN), 4)).lower()
+
+    page = await service.execute(InvoiceQuery(creditor_iban=f" {printed} "))
+
+    assert page.items == (invoice,)

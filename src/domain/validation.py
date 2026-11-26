@@ -45,6 +45,11 @@ def _iso7064_mod97(value: str) -> int:
     return int(digits) % 97
 
 
+def normalized_iban(value: str) -> str:
+    """The electronic form: no spaces, upper case. Printed IBANs are grouped in fours."""
+    return "".join(value.split()).upper()
+
+
 def is_valid_iban(iban: str) -> bool:
     return _IBAN_PATTERN.fullmatch(iban) is not None and _iso7064_mod97(iban) == 1
 
