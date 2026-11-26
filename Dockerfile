@@ -1,7 +1,11 @@
 # syntax=docker/dockerfile:1
 
+# One base image for both stages: the virtualenv links to the builder's interpreter
+# (/usr/local/bin/python3.x), so the runtime must have exactly the same one.
+ARG PYTHON_IMAGE=python:3.15-slim-trixie
+
 # --- Build: resolve dependencies into a virtualenv with uv ---------------------------------------
-FROM python:3.15-slim-trixie AS builder
+FROM ${PYTHON_IMAGE} AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.7 /uv /usr/local/bin/uv
 
@@ -19,7 +23,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev
 
 # --- Runtime: no uv, no build cache, non-root ----------------------------------------------------
-FROM python:3.15-slim-trixie AS runtime
+FROM ${PYTHON_IMAGE} AS runtime
 
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -29,6 +33,7 @@ RUN groupadd --system app && useradd --system --gid app --no-create-home app
 
 WORKDIR /app
 
+# Owned by root: the app user can read the code but not change it.
 COPY --from=builder /opt/venv /opt/venv
 COPY alembic.ini ./
 COPY migrations ./migrations
@@ -37,6 +42,7 @@ COPY src ./src
 # Last, so a new commit rebuilds only this layer, not the dependency layers above.
 ARG GIT_SHA=dev
 ENV GIT_SHA=${GIT_SHA}
+LABEL org.opencontainers.image.revision=${GIT_SHA}
 
 USER app
 
