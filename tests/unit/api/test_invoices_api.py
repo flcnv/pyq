@@ -1,19 +1,22 @@
 import hashlib
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient, Response
 
 from src.api.schemas.error import ErrorResponse
 from src.api.upload_limit import MULTIPART_OVERHEAD_BYTES
+from src.application.errors import StorageUnavailableError
 from src.application.models.ingest_job import IngestJob, JobError, JobErrorDetail, JobStatus
 from src.config import Settings
 from src.domain.models.amount import Currency
+from src.domain.models.invoice import Invoice
 from src.main import create_app
 from tests.unit.application.fakes import (
     FakeRateLimiter,
@@ -283,6 +286,43 @@ async def test_unexpected_error_is_500_without_internals() -> None:
         "details": [],
     }
     assert "password" not in response.text
+
+
+class UnreachableJobRepository(InMemoryJobQueue):
+    async def get_by_content_sha256(self, content_sha256: str) -> IngestJob | None:
+        raise StorageUnavailableError("The database is unavailable") from OSError("refused")
+
+
+class UnreachableInvoiceRepository(InMemoryInvoiceRepository):
+    async def get(self, invoice_id: UUID) -> Invoice | None:
+        raise StorageUnavailableError("The database is unavailable") from OSError("refused")
+
+
+@pytest.mark.parametrize("endpoint", ["upload", "get_invoice"])
+async def test_unreachable_database_is_503_with_retry_after(
+    endpoint: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    uow = InMemoryUnitOfWork(
+        jobs=UnreachableJobRepository(), invoices=UnreachableInvoiceRepository()
+    )
+    caplog.set_level(logging.WARNING)
+    async with api(uow=uow) as (client, _):
+        if endpoint == "upload":
+            response = await upload(client)
+        else:
+            response = await client.get(f"/invoices/{uuid4()}")
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "5"
+    assert "X-Request-ID" in response.headers
+    assert error_of(response) == {
+        "code": "storage_unavailable",
+        "message": "The database is unavailable",
+        "details": [],
+    }
+    [record] = [r for r in caplog.records if r.name == "src.api.errors"]
+    assert (record.levelname, record.message) == ("WARNING", "database unavailable")
+    assert record.exc_info is None  # an outage, not a bug: no traceback
 
 
 # --- POST /invoices: the same file again ---------------------------------------------------------

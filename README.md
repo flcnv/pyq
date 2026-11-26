@@ -191,7 +191,7 @@ ingestion's `error` (one `details` entry per violated rule). Every response carr
 | `422 request_validation` | `llm_fallback_not_configured`: no QR code and no `ANTHROPIC_API_KEY` |
 | `429 rate_limited` (with `Retry-After`) | `llm_quota_exceeded`: no QR code and the LLM budget is used up |
 | `500 internal_error` | `retries_exhausted`: a transient problem outlasted every attempt |
-| | `internal_error`: a bug; details only in the worker log |
+| `503 storage_unavailable` (with `Retry-After`): the database is unreachable | `internal_error`: a bug; details only in the worker log |
 
 ## Operations
 

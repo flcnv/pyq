@@ -14,12 +14,16 @@ from src.application.errors import (
     IngestionNotFoundError,
     InvoiceNotFoundError,
     RateLimitExceededError,
+    StorageUnavailableError,
     UnreadableDocumentError,
 )
 from src.application.job_errors import job_error_for
 from src.logging_setup import request_id_var
 
 logger = logging.getLogger(__name__)
+
+# The usual outage is a database restart or failover, over within seconds.
+STORAGE_RETRY_AFTER_SECONDS = 5
 
 
 class ApiError(Exception):
@@ -92,6 +96,18 @@ def _rate_limited(error: RateLimitExceededError) -> JSONResponse:
     )
 
 
+def _storage_unavailable(error: StorageUnavailableError) -> JSONResponse:
+    # Expected during an outage, not a bug: a warning with the cause's type, no traceback.
+    logger.warning(
+        "database unavailable", extra={"error_type": type(error.__cause__ or error).__name__}
+    )
+    return _known_error_response(
+        HTTPStatus.SERVICE_UNAVAILABLE,
+        error,
+        headers={"Retry-After": str(STORAGE_RETRY_AFTER_SECONDS)},
+    )
+
+
 def _request_validation(error: RequestValidationError) -> JSONResponse:
     details = [
         ErrorDetail(
@@ -148,6 +164,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         (InvoiceNotFoundError, _typed(InvoiceNotFoundError, _invoice_not_found)),
         (IngestionNotFoundError, _typed(IngestionNotFoundError, _ingestion_not_found)),
         (RateLimitExceededError, _typed(RateLimitExceededError, _rate_limited)),
+        (StorageUnavailableError, _typed(StorageUnavailableError, _storage_unavailable)),
         (RequestValidationError, _typed(RequestValidationError, _request_validation)),
         # Starlette picks the handler of the most specific class (by MRO), not the first registered.
         (UploadTooLargeError, _typed(UploadTooLargeError, _upload_too_large)),
