@@ -70,6 +70,7 @@ def create_worker(context: AppContext, *, worker_id: str) -> Worker:
         concurrency=settings.worker_concurrency,
         poll_interval=settings.worker_poll_interval_seconds,
         shutdown_timeout=settings.worker_shutdown_timeout_seconds,
+        heartbeat_file=settings.worker_heartbeat_file,
     )
 
 

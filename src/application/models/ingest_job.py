@@ -34,7 +34,7 @@ class IngestJob:
     after successful processing (`invoice_id`)."""
 
     id: UUID
-    document_id: UUID | None  # None for jobs migrated from before documents were stored
+    document_id: UUID | None  # None once its document was deleted (ON DELETE SET NULL)
     content_sha256: str
     status: JobStatus
     attempts: int

@@ -1,7 +1,11 @@
 import asyncio
+import logging
 import random
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID
+
+import pytest
 
 from src.application.llm_quota import LlmQuota
 from src.application.models.ingest_job import IngestJob, JobStatus
@@ -37,7 +41,11 @@ def queued(uow: InMemoryUnitOfWork, count: int = 1) -> list[IngestJob]:
 
 
 def worker(
-    uow: InMemoryUnitOfWork, process: JobProcessor, *, shutdown_timeout: float = 5
+    uow: InMemoryUnitOfWork,
+    process: JobProcessor,
+    *,
+    shutdown_timeout: float = 5,
+    heartbeat_file: Path | None = None,
 ) -> Worker:
     return Worker(
         worker_id=WORKER,
@@ -48,6 +56,7 @@ def worker(
         concurrency=2,
         poll_interval=0.01,
         shutdown_timeout=shutdown_timeout,
+        heartbeat_file=heartbeat_file,
     )
 
 
@@ -146,3 +155,32 @@ async def test_shutdown_during_the_commit_still_ends_consistent() -> None:
     done = uow.jobs.jobs[job.id]
     assert done.status is JobStatus.DONE  # not released halfway
     assert done.invoice_id in uow.invoices.invoices  # job and invoice, together
+
+
+async def idle_worker_runs_a_few_loops(heartbeat_file: Path) -> None:
+    stop = asyncio.Event()
+    running = asyncio.create_task(
+        worker(InMemoryUnitOfWork(), Gate(), heartbeat_file=heartbeat_file).run(stop)
+    )
+    await asyncio.sleep(0.05)  # poll interval 0.01: several loops
+    stop.set()
+    await asyncio.wait_for(running, timeout=1)
+
+
+async def test_every_loop_touches_the_heartbeat_file(tmp_path: Path) -> None:
+    heartbeat = tmp_path / "worker.heartbeat"
+
+    await idle_worker_runs_a_few_loops(heartbeat)
+
+    assert heartbeat.exists()
+
+
+async def test_an_unwritable_heartbeat_warns_once_and_the_worker_keeps_running(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.WARNING)
+
+    await idle_worker_runs_a_few_loops(tmp_path / "missing-dir" / "worker.heartbeat")
+
+    warnings = [r for r in caplog.records if r.message == "writing the heartbeat file failed"]
+    assert len(warnings) == 1

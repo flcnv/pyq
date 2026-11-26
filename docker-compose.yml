@@ -38,8 +38,13 @@ services:
     command: ["python", "-m", "src.worker"]
     restart: unless-stopped
     stop_grace_period: 45s
-    healthcheck:
-      disable: true
+    healthcheck:  # the worker loop's heartbeat file, not the API's HTTP check from the image
+      test: ["CMD", "python", "-m", "src.worker.healthcheck"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      start_interval: 2s
+      retries: 3
     depends_on:
       migrate:
         condition: service_completed_successfully

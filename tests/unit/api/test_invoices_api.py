@@ -332,6 +332,7 @@ async def test_unreachable_database_is_503_with_retry_after(
         ("get", "/invoices"),
         ("get", "/invoices/{invoice_id}"),
         ("get", "/ingestions/{job_id}"),
+        ("get", "/ready"),
     ],
 )
 def test_database_endpoints_document_the_503(method: str, path: str) -> None:

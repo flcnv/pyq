@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
 from src.application.job_errors import LEASE_EXPIRED, retries_exhausted
@@ -31,6 +32,7 @@ class Worker:
         concurrency: int,
         poll_interval: float,
         shutdown_timeout: float,
+        heartbeat_file: Path | None = None,
     ) -> None:
         self.worker_id = worker_id
         self._unit_of_work = unit_of_work
@@ -40,11 +42,14 @@ class Worker:
         self._concurrency = concurrency
         self._poll_interval = poll_interval
         self._shutdown_timeout = shutdown_timeout
+        self._heartbeat_file = heartbeat_file
+        self._heartbeat_failing = False
         self._in_flight: set[asyncio.Task[None]] = set()
 
     async def run(self, stop: asyncio.Event) -> None:
         logger.info("worker started", extra={"worker_id": self.worker_id})
         while not stop.is_set():
+            self._beat()
             await self._fill_free_slots(stop)
             await self._wait_for_work(stop)
         await self._shut_down()
@@ -57,6 +62,22 @@ class Worker:
             if not self._in_flight:
                 return
             await asyncio.wait(self._in_flight, return_when=asyncio.FIRST_COMPLETED)
+
+    def _beat(self) -> None:
+        """Proof of life for the healthcheck: the loop is still turning. It keeps turning while the
+        database is down (claims fail and are retried), since a restart wouldn't fix that."""
+        if self._heartbeat_file is None:
+            return
+        try:
+            self._heartbeat_file.touch()
+        except OSError as error:
+            if not self._heartbeat_failing:  # once, not every poll
+                logger.warning(
+                    "writing the heartbeat file failed", extra={"error": type(error).__name__}
+                )
+            self._heartbeat_failing = True
+            return
+        self._heartbeat_failing = False
 
     async def _fill_free_slots(self, stop: asyncio.Event) -> None:
         await self._fail_poison_jobs()

@@ -11,8 +11,9 @@ from src.logging_setup import request_id_var
 HEADER = "X-Request-ID"
 # Accept a caller's ID only if it can't break a log line (no newlines, quotes, control chars).
 SAFE_REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{1,64}")
-# Polled every few seconds by the Docker healthcheck: at DEBUG, so it doesn't drown the INFO log.
-DEBUG_ONLY_PATHS = frozenset({"/health"})
+# Polled every few seconds by healthchecks and load balancers: at DEBUG, so they don't drown the
+# INFO log.
+DEBUG_ONLY_PATHS = frozenset({"/health", "/ready"})
 
 # Replaces uvicorn's access log (run with --no-access-log), which writes the full URL: query
 # strings like `?creditor_iban=CH...` must never reach the logs.

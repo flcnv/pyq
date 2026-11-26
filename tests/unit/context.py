@@ -20,12 +20,17 @@ NOW = datetime(2026, 11, 23, 12, 0, tzinfo=UTC)
 NOT_USED = AssertionError("this port isn't expected to be used by the test")
 
 
+async def database_answers() -> None:
+    return None
+
+
 def make_context(**overrides: Any) -> AppContext:
     """An `AppContext` of fakes, with nothing to close. Override any field by name."""
     rate_limiter = overrides.pop("rate_limiter", FakeRateLimiter())
     fields: dict[str, Any] = {
         "settings": Settings(),
         "unit_of_work": InMemoryUnitOfWork().factory,
+        "database_ready": database_answers,
         "clock": FixedClock(NOW),
         "rate_limiter": rate_limiter,
         "llm_quota": LlmQuota(rate_limiter, per_client_per_hour=100, per_day=100),

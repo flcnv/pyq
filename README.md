@@ -177,7 +177,8 @@ examples are transcribed by hand.
 | `GET` | `/ingestions/{id}` | `status`, `attempts`, `invoice_id` once `done`, `error` once `failed` |
 | `GET` | `/invoices/{id}` | The invoice |
 | `GET` | `/invoices?creditor_iban=&currency=&limit=&offset=` | `{items, total, limit, offset}`, newest first, `limit` 1–100; `creditor_iban` also in printed form (spaces, any case) |
-| `GET` | `/health` | `{"status": "ok", "version": "<git sha>"}` |
+| `GET` | `/health` | Liveness: `{"status": "ok", "version": "<git sha>"}`; checks nothing else |
+| `GET` | `/ready` | Readiness: the same body once the database answers, else `503 storage_unavailable` |
 
 Every error has the shape `{"error": {"code", "message", "details": [...]}}`, and so does a failed
 ingestion's `error` (one `details` entry per violated rule). Every response carries `X-Request-ID`.
@@ -218,6 +219,7 @@ All settings come from environment variables or `.env`; [.env.example](.env.exam
 | `JOB_MAX_ATTEMPTS`, `JOB_RETRY_BASE_SECONDS`, `JOB_RETRY_CAP_SECONDS` | `5`, `2`, `300` | Retries and backoff |
 | `JOB_LEASE_MARGIN_SECONDS` | `150` | Lease = LLM timeout × (retries + 1) + margin |
 | `LOG_LEVEL`, `LOG_FORMAT` | `INFO`, `text` | `json` for production |
+| `WORKER_HEARTBEAT_FILE` | `<tmp>/swiss-invoice-worker.heartbeat` | Touched on every worker loop; read by the worker's healthcheck |
 | `GIT_SHA` | `dev` | Build version, set at image build; shown by `/health` and in logs |
 
 **Logging.** With `LOG_FORMAT=json`, every line is one JSON object with `version`, `request_id` and,
@@ -225,9 +227,17 @@ in the worker, `job_id`; the upload's request ID is carried into the worker's li
 Logs contain ids, counts, codes and error types, never IBANs, names, document contents or query
 strings. uvicorn's access log is disabled (`--no-access-log`) because it writes full URLs, and
 `?creditor_iban=` carries an IBAN. The app writes its own access line instead: method, route
-template, status, duration. `GET /health` is logged at DEBUG so the Docker healthcheck doesn't
-flood the log. The database engine hides SQL parameters, so a failing query can't put row values
+template, status, duration. `GET /health` and `GET /ready` are logged at DEBUG so healthchecks
+don't flood the log. The database engine hides SQL parameters, so a failing query can't put row values
 into a log.
+
+**Health checks.** `/health` is liveness: it only says the API process answers, so a database
+outage doesn't get the API restarted. Point a load balancer's readiness check at `/ready`, which
+returns `503` while the database doesn't answer within 2 s (Redis isn't checked: without it the
+API degrades but works). The worker has no HTTP port: it touches `WORKER_HEARTBEAT_FILE` on every
+loop, and its healthcheck (`python -m src.worker.healthcheck`, used in `docker-compose.yml`) fails
+when the file is over 60 s old, i.e. the loop is stuck. A database outage doesn't make the worker
+unhealthy: it keeps polling, and a restart wouldn't help.
 
 **Behind a load balancer.** Limits are per client IP, so uvicorn must trust `X-Forwarded-For`
 from the balancer only: set `FORWARDED_ALLOW_IPS` to its addresses or subnet, never `*` (the app
@@ -274,6 +284,11 @@ difference to the models, builds the Docker image, starts the full stack and run
 - **No OCR.** A scanned PDF without a QR code and without a text layer fails as unreadable.
 - **Jobs blocked by the LLM budget fail** (`llm_quota_exceeded`) instead of waiting for it to reset.
 - **Rate limits are fixed windows**, so a burst at a window boundary can reach twice the limit.
+- **LLM extraction reads the PDF's text layer, not what a person sees.** A PDF can carry invisible
+  text (white, or outside the page) with a different IBAN; it passes validation, because its check
+  digits are right. QR-bills don't have this gap: the QR code is the payment data. Treat invoices
+  with `source: "llm"` as needing a human check before payment.
+- **No metrics.** Queue depth, job durations and LLM spend are visible only in the logs.
 
 ## License
 

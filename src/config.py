@@ -1,5 +1,7 @@
 import math
+import tempfile
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -54,6 +56,8 @@ class Settings(BaseSettings):
     worker_poll_interval_seconds: float = Field(default=1.0, gt=0)
     # 0: release in-flight jobs at once on shutdown.
     worker_shutdown_timeout_seconds: float = Field(default=30.0, ge=0)
+    # Touched on every loop of the worker; `python -m src.worker.healthcheck` checks its age.
+    worker_heartbeat_file: Path = Path(tempfile.gettempdir()) / "swiss-invoice-worker.heartbeat"
     # Retry waits (the SDK honours Retry-After up to 60 s), rendering and the DB writes.
     job_lease_margin_seconds: int = Field(default=150, ge=0)
 

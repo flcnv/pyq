@@ -12,7 +12,11 @@ from src.adapters.documents import PdfiumDocumentReader
 from src.adapters.extraction_failure_cache import RedisExtractionFailureCache
 from src.adapters.parsers.llm import LlmInvoiceParser, extraction_config
 from src.adapters.parsers.qr_bill import QrBillParser
-from src.adapters.persistence.database import create_engine, create_session_factory
+from src.adapters.persistence.database import (
+    create_engine,
+    create_session_factory,
+    database_readiness,
+)
 from src.adapters.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from src.adapters.rate_limiter import RedisRateLimiter
 from src.adapters.redis_client import create_redis_client
@@ -22,6 +26,7 @@ from src.application.ports.document_reader import DocumentReader
 from src.application.ports.extraction_failure_cache import ExtractionFailureCache
 from src.application.ports.invoice_parser import InvoiceParser
 from src.application.ports.rate_limiter import RateLimiter
+from src.application.ports.readiness import ReadinessCheck
 from src.application.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 from src.application.retry_policy import RetryPolicy
 from src.config import Settings
@@ -39,6 +44,7 @@ class AppContext:
 
     settings: Settings
     unit_of_work: UnitOfWorkFactory
+    database_ready: ReadinessCheck
     clock: Clock
     rate_limiter: RateLimiter
     llm_quota: LlmQuota
@@ -99,6 +105,7 @@ async def build_context(settings: Settings) -> AppContext:
         context = AppContext(
             settings=settings,
             unit_of_work=_unit_of_work_factory(session_factory),
+            database_ready=database_readiness(engine),
             clock=SystemClock(),
             rate_limiter=rate_limiter,
             llm_quota=llm_quota,

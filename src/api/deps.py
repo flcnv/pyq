@@ -4,6 +4,7 @@ from fastapi import Depends, Request
 
 from src.application.errors import RateLimiterUnavailableError
 from src.application.ports.rate_limiter import RateLimit
+from src.application.ports.readiness import ReadinessCheck
 from src.application.services.enqueue_ingestion import EnqueueIngestion
 from src.application.services.get_ingestion import GetIngestion
 from src.application.services.get_invoice import GetInvoice
@@ -34,6 +35,13 @@ def get_app_settings(context: ContextDep) -> Settings:
 
 
 SettingsDep = Annotated[Settings, Depends(get_app_settings)]
+
+
+def get_database_ready(context: ContextDep) -> ReadinessCheck:
+    return context.database_ready
+
+
+DatabaseReadyDep = Annotated[ReadinessCheck, Depends(get_database_ready)]
 
 
 def get_client_id(request: Request) -> str:

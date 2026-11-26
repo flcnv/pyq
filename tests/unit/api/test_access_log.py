@@ -106,17 +106,18 @@ async def test_a_request_whose_handler_raises_is_logged_as_500() -> None:
     assert (line["path"], line["status"], line["request_id"]) == ("/invoices", 500, "r500")
 
 
-async def test_health_is_logged_only_at_debug() -> None:
+@pytest.mark.parametrize("path", ["/health", "/ready"])
+async def test_probes_are_logged_only_at_debug(path: str) -> None:
     with app_logs(level="INFO") as info_logs:
         async with api() as (client, _):
-            await client.get("/health")
+            await client.get(path)
     with app_logs(level="DEBUG") as debug_logs:
         async with api() as (client, _):
-            await client.get("/health")
+            await client.get(path)
 
     assert info_logs.lines == []
     [line] = access_lines(debug_logs.json())
-    assert (line["level"], line["path"], line["status"]) == ("DEBUG", "/health", 200)
+    assert (line["level"], line["path"], line["status"]) == ("DEBUG", path, 200)
 
 
 async def test_headers_and_bodies_are_not_logged() -> None:

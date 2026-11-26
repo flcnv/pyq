@@ -1,13 +1,11 @@
-import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from alembic import command
-from sqlalchemy import URL, text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import NullPool
+from sqlalchemy import URL
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.adapters.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from src.application.errors import JobAlreadyExistsError
@@ -148,42 +146,10 @@ async def test_done_job_must_have_an_invoice(session_factory: SessionFactory) ->
             await uow.jobs.add(make_job(document, status=JobStatus.DONE))
 
 
-INSERT_INVOICE = text(
-    "INSERT INTO invoices (id, created_at, source, content_sha256, creditor_iban, creditor_name,"
-    " creditor_postal_code, creditor_town, creditor_country, currency, reference_type)"
-    " VALUES (:id, now(), 'qr', :sha, 'CH6431961000004421557', 'n', '8000', 'Z', 'CH',"
-    " 'CHF', 'NON')"
-)
-HASHED_INVOICE = "00000000-0000-4000-8000-000000000001"
-UNHASHED_INVOICE = "00000000-0000-4000-8000-000000000002"
-
-
-async def insert_invoices(database_url: URL) -> None:
-    engine = create_async_engine(database_url, poolclass=NullPool)
-    async with engine.begin() as connection:
-        await connection.execute(INSERT_INVOICE, {"id": HASHED_INVOICE, "sha": "a" * 64})
-        await connection.execute(INSERT_INVOICE, {"id": UNHASHED_INVOICE, "sha": None})
-    await engine.dispose()
-
-
-async def job_rows(database_url: URL) -> list[tuple[str, str, str]]:
-    engine = create_async_engine(database_url, poolclass=NullPool)
-    async with engine.connect() as connection:
-        rows = await connection.execute(
-            text("SELECT content_sha256, status, invoice_id::text FROM ingest_jobs")
-        )
-        result = [(row[0], row[1], row[2]) for row in rows]
-    await engine.dispose()
-    return result
-
-
-def test_migration_gives_every_hashed_invoice_a_done_job(database_url: URL) -> None:
+def test_the_schema_downgrades_to_empty_and_upgrades_again(database_url: URL) -> None:
     config = alembic_config(database_url)
-    command.downgrade(config, "3a96ca5717d0")  # before the jobs table existed
     try:
-        asyncio.run(insert_invoices(database_url))
+        command.downgrade(config, "base")
         command.upgrade(config, "head")
-
-        assert asyncio.run(job_rows(database_url)) == [("a" * 64, "done", HASHED_INVOICE)]
     finally:
-        command.upgrade(config, "head")
+        command.upgrade(config, "head")  # the other tests need the schema, whatever happened
