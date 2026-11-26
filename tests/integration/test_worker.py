@@ -11,7 +11,6 @@ from sqlalchemy.exc import IntegrityError
 
 from src.adapters.parsers.llm import ExtractionConfig, LlmInvoiceParser
 from src.adapters.parsers.qr_bill import QrBillParser
-from src.adapters.parsers.unconfigured_llm import UnconfiguredLlmParser
 from src.adapters.persistence.database import create_engine, create_session_factory
 from src.adapters.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from src.adapters.rate_limiter import RedisRateLimiter
@@ -72,7 +71,7 @@ async def expire_lease(session_factory: SessionFactory, job_id: UUID) -> None:
 
 
 def real_worker(
-    session_factory: SessionFactory, llm_parser: InvoiceParser, **kwargs: object
+    session_factory: SessionFactory, llm_parser: InvoiceParser | None, **kwargs: object
 ) -> Worker:
     return worker(
         session_factory,
@@ -160,12 +159,12 @@ async def test_a_stale_workers_completion_is_rejected_and_writes_no_invoice(
     stale = await claim(session_factory, "stale-worker")
     assert stale is not None
     await expire_lease(session_factory, queued.id)
-    current = real_worker(session_factory, UnconfiguredLlmParser(), worker_id="current-worker")
+    current = real_worker(session_factory, None, worker_id="current-worker")
     slow = processor(
         session_factory,
         document_reader=document_reader(),
         qr_parser=QrBillParser(),
-        llm_parser=UnconfiguredLlmParser(),
+        llm_parser=None,
         worker_id="stale-worker",
     )
 
@@ -210,9 +209,7 @@ async def test_qr_upload_is_processed_into_an_invoice(
     client: AsyncClient, session_factory: SessionFactory
 ) -> None:
     file = ("invoice_with_qr.pdf", QR_PDF, "application/pdf")
-    ingestion = await upload_and_process(
-        client, file, real_worker(session_factory, UnconfiguredLlmParser())
-    )
+    ingestion = await upload_and_process(client, file, real_worker(session_factory, None))
 
     assert ingestion["status"] == "done"
     invoice = await client.get(f"/invoices/{ingestion['invoice_id']}")
@@ -324,7 +321,7 @@ async def test_no_qr_code_without_an_llm_key_fails_with_a_clear_reason(
     ingestion = await upload_and_process(
         client,
         ("no_qr.pdf", NO_QR_PDF, "application/pdf"),
-        real_worker(session_factory, UnconfiguredLlmParser()),
+        real_worker(session_factory, None),
     )
 
     assert ingestion["status"] == "failed"
@@ -339,7 +336,7 @@ async def test_a_broken_pdf_fails_as_unreadable(
     ingestion = await upload_and_process(
         client,
         ("broken.pdf", b"%PDF-1.7 not really", "application/pdf"),
-        real_worker(session_factory, UnconfiguredLlmParser()),
+        real_worker(session_factory, None),
     )
 
     error = ingestion["error"]
@@ -351,7 +348,7 @@ async def test_running_worker_processes_new_uploads_until_stopped(
     session_factory: SessionFactory,
 ) -> None:
     stop = asyncio.Event()
-    running = asyncio.create_task(real_worker(session_factory, UnconfiguredLlmParser()).run(stop))
+    running = asyncio.create_task(real_worker(session_factory, None).run(stop))
     queued = await enqueue(session_factory, QR_PDF)
 
     for _ in range(200):  # poll interval is 0.05 s
@@ -374,7 +371,7 @@ def failing_worker(
         session_factory,
         document_reader=FakeDocumentReader(Document(pages=(b"page.png",), text="")),
         qr_parser=qr,
-        llm_parser=UnconfiguredLlmParser(),
+        llm_parser=None,
         retry_policy=policy,
     )
 
@@ -487,7 +484,7 @@ def held_worker(session_factory: SessionFactory, qr: HeldParser, shutdown_timeou
         session_factory,
         document_reader=FakeDocumentReader(Document(pages=(b"page.png",), text="")),
         qr_parser=qr,
-        llm_parser=UnconfiguredLlmParser(),
+        llm_parser=None,
         shutdown_timeout=shutdown_timeout,
     )
 

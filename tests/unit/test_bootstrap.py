@@ -4,7 +4,6 @@ import pytest
 from pydantic import SecretStr
 
 from src.adapters.parsers.llm import LlmInvoiceParser
-from src.adapters.parsers.unconfigured_llm import UnconfiguredLlmParser
 from src.bootstrap import build_context
 from src.config import Settings
 from tests.unit.logs import app_logs
@@ -129,7 +128,7 @@ async def test_without_an_api_key_there_is_no_anthropic_client(
     context = await build_context(Settings(anthropic_api_key=api_key))
 
     assert resources.created == ["engine", "redis"]
-    assert isinstance(context.llm_parser, UnconfiguredLlmParser)
+    assert context.llm_parser is None
     await context.aclose()
     assert resources.closed == ["redis", "engine"]
 

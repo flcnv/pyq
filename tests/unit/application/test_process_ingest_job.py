@@ -9,7 +9,6 @@ import pytest
 
 from src.application.errors import (
     ExtractionFailedError,
-    LlmFallbackNotConfiguredError,
     NoQrCodeFoundError,
     StorageUnavailableError,
     UnreadableDocumentError,
@@ -66,7 +65,7 @@ class Setup:
     service: ProcessIngestJob
     reader: FakeDocumentReader
     qr_parser: FakeInvoiceParser
-    llm_parser: FakeInvoiceParser
+    llm_parser: FakeInvoiceParser  # never called when the service got no LLM
     uow: InMemoryUnitOfWork
     limiter: FakeRateLimiter
     failure_cache: InMemoryExtractionFailureCache
@@ -76,13 +75,13 @@ def setup(
     *,
     document: Document | Exception = DOCUMENT,
     qr: Invoice | Exception = QR_INVOICE,
-    llm: Invoice | Exception = LLM_INVOICE,
+    llm: Invoice | Exception | None = LLM_INVOICE,  # None: no LLM configured
     limiter: FakeRateLimiter | None = None,
     uow: InMemoryUnitOfWork | None = None,
 ) -> Setup:
     reader = FakeDocumentReader(document)
     qr_parser = FakeInvoiceParser(qr)
-    llm_parser = FakeInvoiceParser(llm)
+    llm_parser = FakeInvoiceParser(LLM_INVOICE if llm is None else llm)
     limiter = limiter or FakeRateLimiter()
     failure_cache = InMemoryExtractionFailureCache()
     uow = uow or InMemoryUnitOfWork()
@@ -90,7 +89,7 @@ def setup(
         worker_id=WORKER,
         document_reader=reader,
         qr_parser=qr_parser,
-        llm_parser=llm_parser,
+        llm_parser=None if llm is None else llm_parser,
         llm_quota=LlmQuota(limiter, per_client_per_hour=LLM_PER_CLIENT, per_day=LLM_PER_DAY),
         llm_failure_cache=failure_cache,
         unit_of_work=uow.factory,
@@ -272,10 +271,30 @@ async def test_missing_document_fails_as_unreadable() -> None:
     assert error_code(s.uow.jobs.jobs[job.id]) == "unreadable_document"
 
 
-async def test_no_llm_configured_fails_with_its_own_code() -> None:
-    s = setup(qr=NO_QR, llm=LlmFallbackNotConfiguredError("not configured"))
+async def test_no_llm_configured_fails_with_its_own_code_without_using_the_budget() -> None:
+    s = setup(qr=NO_QR, llm=None)
 
     job = await process(s)
+
+    assert error_code(job) == "llm_fallback_not_configured"
+    assert s.limiter.hits == {}
+
+
+async def test_no_llm_configured_fails_at_once_even_when_the_budget_is_unavailable() -> None:
+    s = setup(qr=NO_QR, llm=None, limiter=FakeRateLimiter(unavailable=True))
+
+    job = await process(s)
+
+    assert job.status is JobStatus.FAILED  # not retried as a transient outage
+    assert error_code(job) == "llm_fallback_not_configured"
+
+
+async def test_no_llm_configured_is_not_hidden_by_a_spent_budget() -> None:
+    s = setup(qr=NO_QR, llm=None)
+    for number in range(LLM_PER_CLIENT + 1):
+        await process(s, f"file {number}".encode())
+
+    job = await process(s, b"one more file")
 
     assert error_code(job) == "llm_fallback_not_configured"
 

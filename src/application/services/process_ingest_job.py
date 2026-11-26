@@ -8,6 +8,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from src.application.errors import (
+    LlmFallbackNotConfiguredError,
     NoQrCodeFoundError,
     UnreadableDocumentError,
     UnusableLlmOutputError,
@@ -59,13 +60,14 @@ class ProcessIngestJob:
         worker_id: str,
         document_reader: DocumentReader,
         qr_parser: InvoiceParser,
-        llm_parser: InvoiceParser,
+        llm_parser: InvoiceParser | None,
         llm_quota: LlmQuota,
         llm_failure_cache: ExtractionFailureCache,
         unit_of_work: UnitOfWorkFactory,
         clock: Clock,
         retry_policy: RetryPolicy,
     ) -> None:
+        """`llm_parser` is None when no LLM is configured (no API key)."""
         self._worker_id = worker_id
         self._document_reader = document_reader
         self._qr_parser = qr_parser
@@ -144,6 +146,11 @@ class ProcessIngestJob:
         content_sha256: str,
         client_id: str,
     ) -> Invoice:
+        if self._llm_parser is None:
+            # Before the cache and the budget: nothing is spent on a call that can't happen.
+            raise LlmFallbackNotConfiguredError(
+                "No Swiss QR Code found, and the LLM fallback is not configured"
+            )
         known_failure = await self._llm_failure_cache.get(content_sha256)
         if known_failure is not None:
             logger.info("LLM already failed on this file, not retrying")

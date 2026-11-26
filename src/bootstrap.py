@@ -12,7 +12,6 @@ from src.adapters.documents import PdfiumDocumentReader
 from src.adapters.extraction_failure_cache import RedisExtractionFailureCache
 from src.adapters.parsers.llm import LlmInvoiceParser, extraction_config
 from src.adapters.parsers.qr_bill import QrBillParser
-from src.adapters.parsers.unconfigured_llm import UnconfiguredLlmParser
 from src.adapters.persistence.database import create_engine, create_session_factory
 from src.adapters.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from src.adapters.rate_limiter import RedisRateLimiter
@@ -46,7 +45,7 @@ class AppContext:
     llm_failure_cache: ExtractionFailureCache
     document_reader: DocumentReader
     qr_parser: InvoiceParser
-    llm_parser: InvoiceParser
+    llm_parser: InvoiceParser | None  # None: no API key, the LLM fallback is off
     retry_policy: RetryPolicy
     exit_stack: AsyncExitStack = field(default_factory=AsyncExitStack, repr=False)
 
@@ -80,9 +79,7 @@ async def build_context(settings: Settings) -> AppContext:
             "LLM extraction fingerprint %s (model %s)", config.fingerprint, settings.anthropic_model
         )
         rate_limiter = RedisRateLimiter(redis)
-        llm_parser: InvoiceParser = (
-            UnconfiguredLlmParser() if anthropic is None else LlmInvoiceParser(anthropic, config)
-        )
+        llm_parser = None if anthropic is None else LlmInvoiceParser(anthropic, config)
         llm_quota = LlmQuota(
             rate_limiter,
             per_client_per_hour=settings.llm_requests_per_client_per_hour,
